@@ -1,0 +1,20 @@
+[package]
+name = "ddelta"
+version = "0.1.0"
+authors = ["lights0123 <developer@lights0123.com>"]
+edition = "2018"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+zerocopy = "0.3.0"
+byteorder = "1.3.4"
+divsufsort = "2.0.0"
+anyhow = "1.0.28"
+cdivsufsort = "2.0.0"
+xz2 = "0.1.6"
+
+[profile.release]
+panic = "abort"
+lto = true
