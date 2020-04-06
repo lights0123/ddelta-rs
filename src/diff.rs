@@ -301,9 +301,8 @@ fn min_memcmp(a: &[u8], b: &[u8]) -> Ordering {
     a[..len].cmp(&b[..len])
 }
 
-/// This is a binary search of the string `new_buf` of size `newsize` (or a
-/// prefix of it) in the `old` string with size `oldsize` using the suffix array
-/// `I`. `st` and `en` is the start and end of the search range (inclusive).
+/// This is a binary search of the string `new` in the `old` string using the suffix array
+/// `sorted`. `st` and `en` is the start and end of the search range (inclusive).
 /// Returns the length of the longest prefix found and stores the position of the
 /// string found in `*pos`.
 fn search(sorted: &[i32], old: &[u8], new: &[u8], st: usize, en: usize, pos: &mut isize) -> isize {
