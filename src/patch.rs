@@ -1,9 +1,14 @@
-use super::Result;
-use crate::{EntryHeader, PatchHeader, DDELTA_MAGIC};
-use anyhow::{anyhow, bail, ensure};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
+
 use zerocopy::LayoutVerified;
+
+use anyhow::{anyhow, bail, ensure};
+
+use crate::{EntryHeader, PatchHeader, DDELTA_MAGIC};
+
+use super::Result;
+use std::io;
 
 const BLOCK_SIZE: u64 = 32 * 1024;
 macro_rules! read {
@@ -51,19 +56,20 @@ fn copy_bytes(src: &mut impl Read, dst: &mut impl Write, mut bytes: u64) -> Resu
     let mut buf = [0; BLOCK_SIZE as usize];
     while bytes > 0 {
         let to_read = BLOCK_SIZE.min(bytes) as usize;
-        src.read_exact(&mut buf)?;
-        dst.write_all(&buf)?;
+        let buf = &mut buf[..to_read];
+        src.read_exact(buf)?;
+        dst.write_all(buf)?;
         bytes -= to_read as u64;
     }
     Ok(())
 }
 
-pub fn apply(
-    patch: &mut impl Read,
+fn apply_with_header(
     old: &mut (impl Read + Seek),
     new: &mut impl Write,
+    patch: &mut impl Read,
+    header: PatchHeader,
 ) -> Result<()> {
-    let header = read!(patch, PatchHeader)?;
     ensure!(&header.magic == DDELTA_MAGIC, "Invalid magic number");
     let mut bytes_written = 0;
     loop {
@@ -79,5 +85,45 @@ pub fn apply(
         copy_bytes(patch, new, entry.extra.get())?;
         old.seek(SeekFrom::Current(entry.seek.get()))?;
         bytes_written += entry.diff.get() + entry.extra.get();
+    }
+}
+
+/// Apply a patch file. This is compatible with the formats created by [`generate`][crate::generate]
+/// and the original ddelta program.
+///
+/// However, it is not compatible with the format created by
+/// [`generate_chunked`][crate::generate_chunked]. In that case, use [`apply_chunked`].
+pub fn apply(
+    old: &mut (impl Read + Seek),
+    new: &mut impl Write,
+    patch: &mut impl Read,
+) -> Result<()> {
+    let header = read!(patch, PatchHeader)?;
+    apply_with_header(old, new, patch, header)
+}
+
+/// Apply a patch file. This is compatible with the formats created by
+/// [`generate`][crate::generate], [`generate_chunked`][crate::generate_chunked], as well as the
+/// original ddelta program.
+pub fn apply_chunked(
+    old: &mut (impl Read + Seek),
+    new: &mut impl Write,
+    patch: &mut impl Read,
+) -> Result<()> {
+    loop {
+        let header = match read!(patch, PatchHeader) {
+            Ok(header) => header,
+            Err(e) => {
+                return if e
+                    .downcast_ref::<io::Error>()
+                    .map_or(false, |e| e.kind() == ErrorKind::UnexpectedEof)
+                {
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            }
+        };
+        apply_with_header(old, new, patch, header)?;
     }
 }
