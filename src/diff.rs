@@ -2,12 +2,13 @@ use std::cmp::Ordering;
 use std::i32;
 use std::io::{ErrorKind, Read, Write};
 
-use crate::{EntryHeader, PatchHeader, State, DDELTA_MAGIC};
 use anyhow::{ensure, Context, Result};
 use byteorder::WriteBytesExt;
 #[cfg(not(feature = "c"))]
 use divsufsort as cdivsufsort;
 use zerocopy::{AsBytes, I64, U64};
+
+use crate::{EntryHeader, PatchHeader, State, DDELTA_MAGIC};
 
 const FUZZ: isize = 8;
 
@@ -46,8 +47,8 @@ pub fn generate_chunked(
 ) -> Result<()> {
     let chunk_sizes = chunk_sizes
         .into()
-        .unwrap_or(i32::MAX as usize)
-        .min(i32::MAX as usize);
+        .unwrap_or(i32::MAX as usize - 1)
+        .min(i32::MAX as usize - 1);
     let mut old_buf = vec![0; chunk_sizes];
     let mut new_buf = vec![0; chunk_sizes];
     let mut bytes_completed = 0;
@@ -115,7 +116,7 @@ pub fn generate(
     mut progress: impl FnMut(State) -> (),
 ) -> Result<()> {
     ensure!(
-        old.len().max(new.len()) <= i32::MAX as usize,
+        old.len().max(new.len()) < i32::MAX as usize,
         "The filesize must not be larger than {} bytes",
         i32::MAX
     );
@@ -134,6 +135,10 @@ pub fn generate(
         let mut oldscore: isize = 0;
         scan += len;
         let mut scsc = scan;
+        // If we come across a large block of data that only differs
+        // by less than 8 bytes, this loop will take a long time to
+        // go past that block of data. We need to track the number of
+        // times we're stuck in the block and break out of it.
         while scan < new.len() as isize {
             if scan % 100_000 == 0 {
                 progress(State::Working(scan as u64));
@@ -296,11 +301,11 @@ fn min_memcmp(a: &[u8], b: &[u8]) -> Ordering {
     a[..len].cmp(&b[..len])
 }
 
-/* This is a binary search of the string |new_buf| of size |newsize| (or a
- * prefix of it) in the |old| string with size |oldsize| using the suffix array
- * |I|. |st| and |en| is the start and end of the search range (inclusive).
- * Returns the length of the longest prefix found and stores the position of the
- * string found in |*pos|. */
+/// This is a binary search of the string `new_buf` of size `newsize` (or a
+/// prefix of it) in the `old` string with size `oldsize` using the suffix array
+/// `I`. `st` and `en` is the start and end of the search range (inclusive).
+/// Returns the length of the longest prefix found and stores the position of the
+/// string found in `*pos`.
 fn search(sorted: &[i32], old: &[u8], new: &[u8], st: usize, en: usize, pos: &mut isize) -> isize {
     if en - st < 2 {
         let x = match_len(&old[(sorted[st] as usize)..], new) as isize;
