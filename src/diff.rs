@@ -289,11 +289,18 @@ fn match_len(a: &[u8], b: &[u8]) -> usize {
         .map_or(0, |(i, _)| i + 1)
 }
 
-fn r_memcmp(a: &[u8], b: &[u8]) -> Ordering {
+/// Compares lexicographically the common part of these slices, i.e. takes the smallest length and
+/// compares within that.
+fn min_memcmp(a: &[u8], b: &[u8]) -> Ordering {
     let len = a.len().min(b.len());
     a[..len].cmp(&b[..len])
 }
 
+/* This is a binary search of the string |new_buf| of size |newsize| (or a
+ * prefix of it) in the |old| string with size |oldsize| using the suffix array
+ * |I|. |st| and |en| is the start and end of the search range (inclusive).
+ * Returns the length of the longest prefix found and stores the position of the
+ * string found in |*pos|. */
 fn search(sorted: &[i32], old: &[u8], new: &[u8], st: usize, en: usize, pos: &mut isize) -> isize {
     if en - st < 2 {
         let x = match_len(&old[(sorted[st] as usize)..], new) as isize;
@@ -308,7 +315,7 @@ fn search(sorted: &[i32], old: &[u8], new: &[u8], st: usize, en: usize, pos: &mu
         }
     } else {
         let x = st + (en - st) / 2;
-        if r_memcmp(&old[(sorted[x] as usize)..], new) != Ordering::Greater {
+        if min_memcmp(&old[(sorted[x] as usize)..], new) != Ordering::Greater {
             search(sorted, old, new, x, en, pos)
         } else {
             search(sorted, old, new, st, x, pos)
