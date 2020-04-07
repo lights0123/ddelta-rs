@@ -1,6 +1,6 @@
 [package]
 name = "ddelta"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["lights0123 <developer@lights0123.com>"]
 description = "Rust port of the streaming ddelta patch algorithm, based on bsdiff"
 repository = "https://github.com/lights0123/ddelta-rs"
