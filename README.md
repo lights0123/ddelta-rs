@@ -29,6 +29,10 @@ add `default-features = false` to your Cargo.toml, i.e.
 [dependencies]
 ddelta = { version = "0.1.0", default-features = false }
 ```
+old:  
+\[00:06:17] \[████████████████████████████████████████] 1.86GB/1.86GB
+(5.07MB/s, 0s) target/release/ddelta diff image.old.trunc image.trunc
+image.trunc.patch 368.48s user 5.79s system 99% cpu 6:17.71 total
 
 [ddelta]: https://github.com/julian-klode/ddelta
 [bsdiff]: http://www.daemonology.net/bsdiff/

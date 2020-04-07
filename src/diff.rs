@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::i32;
+use std::{i32, thread};
 use std::io::{ErrorKind, Read, Write};
 
 use anyhow::{ensure, Context, Result};
@@ -9,6 +9,8 @@ use divsufsort as cdivsufsort;
 use zerocopy::{AsBytes, I64, U64};
 
 use crate::{EntryHeader, PatchHeader, State, DDELTA_MAGIC};
+use dashmap::DashMap;
+use rayon::prelude::*;
 
 const FUZZ: isize = 8;
 
@@ -124,6 +126,53 @@ pub fn generate(
     write_header(patch, new.len() as u64)?;
     let mut sorted = cdivsufsort::sort(old).into_parts().1;
     sorted.push(0);
+    let map = DashMap::with_capacity(100_000_000);
+    crossbeam::thread::scope(|s| {
+        let thread = thread::current();
+        let sorted_ref = &sorted;
+        let map_ref = &map;
+        let (send,r) = crossbeam::channel::bounded(100);
+        s.spawn(move|_|{
+            let mut part: u32 = 0;
+            loop {
+                let up_to = (part + 10_000).min(new.len() as u32);
+                dbg!(part);
+                dbg!(up_to);
+                println!();
+                (part..up_to).into_par_iter().for_each(|scan| {
+                    let mut pos = 0;
+                    let len = search(
+                        sorted_ref,
+                        &old[..old.len().wrapping_sub(1).min(old.len())],
+                        &new[scan as usize..],
+                        0,
+                        old.len(),
+                        &mut pos,
+                    );
+                    map_ref.insert(scan as i32, (pos as i32, len as i32));
+                    thread.unpark();
+                });
+                part = loop {
+                    match r.recv() {
+                        Ok(new) if new as u32 >= up_to => break new,
+                        Ok(_) => {},
+                        _ => return,
+                    }
+                }
+            }
+        });
+        generate_internal(old, new, patch, progress,send, &map)
+    }).map_err(|_|anyhow::anyhow!("Failed to join threads"))?
+}
+
+fn generate_internal(
+    old: &[u8],
+    new: &[u8],
+    patch: &mut impl Write,
+    mut progress: impl FnMut(State) -> (),
+    s:crossbeam::channel::Sender<u32>,
+    map: &DashMap<i32, (i32, i32)>,
+) -> Result<()> {
     let mut scan = 0;
     let mut len = 0;
     let mut pos = 0;
@@ -140,21 +189,25 @@ pub fn generate(
         // go past that block of data. We need to track the number of
         // times we're stuck in the block and break out of it.
         while scan < new.len() as isize {
-            if scan % 100_000 == 0 {
+            // if scan % 1_000 == 0 {
                 progress(State::Working(scan as u64));
-            }
+            // }
             let prev_len = len;
             let prev_oldscore = oldscore;
             let prev_pos = pos;
-
-            len = search(
-                &sorted,
-                &old[..old.len().wrapping_sub(1).min(old.len())],
-                &new[scan as usize..],
-                0,
-                old.len(),
-                &mut pos,
-            );
+            let mut help_called = false;
+            loop {
+                if let Some(data) = map.get(&(scan as i32)) {
+                    pos = data.0 as isize;
+                    len = data.1 as isize;
+                    break;
+                }
+                if !help_called {
+                    s.send(scan as u32).unwrap();
+                    help_called = true;
+                }
+                thread::park();
+            }
 
             while scsc < scan + len {
                 if (scsc + lastoffset < old.len() as isize)
