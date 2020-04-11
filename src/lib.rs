@@ -32,11 +32,13 @@ use byteorder::BigEndian;
 use zerocopy::{AsBytes, FromBytes, Unaligned, I64, U64};
 
 use anyhow::Result;
+#[cfg(feature = "diff")]
 pub use diff::{generate, generate_chunked};
 pub use patch::{apply, apply_chunked};
 
 const DDELTA_MAGIC: &[u8; 8] = b"DDELTA40";
 
+#[cfg(feature = "diff")]
 mod diff;
 mod patch;
 
@@ -44,6 +46,7 @@ mod patch;
 ///
 /// Passed to a callback periodically to give feedback, such as updating a progress bar.
 #[derive(Eq, PartialEq, Copy, Clone, Hash, Debug)]
+#[cfg(feature = "diff")]
 pub enum State {
     /// The new or old file is currently being read. This is currently only used in
     /// [`generate_chunked`].
