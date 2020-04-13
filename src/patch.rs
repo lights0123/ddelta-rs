@@ -110,6 +110,7 @@ pub fn apply_chunked(
     new: &mut impl Write,
     patch: &mut impl Read,
 ) -> Result<()> {
+    let mut bytes_written = 0;
     loop {
         let header = match read!(patch, PatchHeader) {
             Ok(header) => header,
@@ -124,6 +125,11 @@ pub fn apply_chunked(
                 }
             }
         };
+        // Each iteration expects to start from the beginning of the old file, so we can take
+        // advantage of the fact that the chunks of old & new are always the same, and if they're
+        // not, no data is read from the old file
+        old.seek(SeekFrom::Start(bytes_written))?;
+        bytes_written += header.new_file_size.get();
         apply_with_header(old, new, patch, header)?;
     }
 }

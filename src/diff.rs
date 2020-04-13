@@ -140,7 +140,7 @@ pub fn generate(
         // go past that block of data. We need to track the number of
         // times we're stuck in the block and break out of it.
         while scan < new.len() as isize {
-            if scan % 100_000 == 0 {
+            if scan % 100_00 == 0 {
                 progress(State::Working(scan as u64));
             }
             let prev_len = len;
